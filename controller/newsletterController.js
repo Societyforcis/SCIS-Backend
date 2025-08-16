@@ -48,7 +48,7 @@ const sendConfirmationEmail = async (email, firstName) => {
           </div>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; color: #777; font-size: 12px;">
-            <p>If you did not subscribe to this newsletter, please <a href="http://localhost:5000/api/newsletter/unsubscribe/${email}" style="color: #0066cc;">click here to unsubscribe</a>.</p>
+            <p>If you did not subscribe to this newsletter, please <a href="${import.meta.env.VITE_API_URL}/api/newsletter/unsubscribe/${email}" style="color: #0066cc;">click here to unsubscribe</a>.</p>
             <p>&copy; ${new Date().getFullYear()} Society for Cyber Intelligent Systems. All rights reserved.</p>
           </div>
         </div>

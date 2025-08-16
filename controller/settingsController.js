@@ -25,25 +25,77 @@ export const getUserSettings = async (req, res) => {
 
 export const updateSettings = async (req, res) => {
   try {
-    const { emailNotifications, pushNotifications, profileVisibility, darkMode } = req.body;
+    // Validate if user is authenticated
+    if (!req.user || !req.user._id) {
+      console.error('User not authenticated or missing ID');
+      return res.status(401).json({ 
+        success: false, 
+        message: "Authentication required" 
+      });
+    }
+
+    const userId = req.user._id;
     
-    console.log('Updating settings for user:', req.user._id);
-    console.log('Received settings:', req.body);
+    // Enhanced debugging
+    console.log('Raw request body:', JSON.stringify(req.body));
+    console.log('User ID:', userId.toString());
     
-    const settings = await UserSettings.findOneAndUpdate(
-      { userId: req.user._id },
-      { emailNotifications, pushNotifications, profileVisibility, darkMode },
-      { new: true, upsert: true }
+    // Create update object with strict boolean conversion
+    const updateFields = {};
+    
+    // Check if fields exist in request and handle them explicitly
+    if ('emailNotifications' in req.body) {
+      updateFields.emailNotifications = Boolean(req.body.emailNotifications);
+      console.log(`Setting emailNotifications to: ${updateFields.emailNotifications} (original value: ${req.body.emailNotifications}, type: ${typeof req.body.emailNotifications})`);
+    }
+    
+    if ('pushNotifications' in req.body) {
+      updateFields.pushNotifications = Boolean(req.body.pushNotifications);
+      console.log(`Setting pushNotifications to: ${updateFields.pushNotifications} (original value: ${req.body.pushNotifications})`);
+    }
+    
+    if ('profileVisibility' in req.body) {
+      updateFields.profileVisibility = Boolean(req.body.profileVisibility);
+      console.log(`Setting profileVisibility to: ${updateFields.profileVisibility} (original value: ${req.body.profileVisibility})`);
+    }
+    
+    if ('darkMode' in req.body) {
+      updateFields.darkMode = Boolean(req.body.darkMode);
+      console.log(`Setting darkMode to: ${updateFields.darkMode} (original value: ${req.body.darkMode})`);
+    }
+    
+    console.log('Final update fields:', updateFields);
+    
+    // Check if document exists first (for debugging)
+    const existingSettings = await UserSettings.findOne({ userId });
+    console.log('Existing settings document:', existingSettings);
+    
+    // Perform the update with explicit options
+    const result = await UserSettings.findOneAndUpdate(
+      { userId },
+      updateFields,
+      { 
+        new: true, 
+        upsert: true,
+        runValidators: true
+      }
     );
     
-    console.log('Updated settings:', settings);
+    console.log('Update result:', result);
     
-    res.json({ success: true, settings });
+    // Verify the update worked by fetching fresh data
+    const verifiedSettings = await UserSettings.findOne({ userId });
+    console.log('Verified settings after update:', verifiedSettings);
+    
+    res.json({
+      success: true,
+      settings: result
+    });
   } catch (error) {
-    console.error('Error updating user settings:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error updating settings",
+    console.error('Error updating settings:', error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update settings",
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -77,5 +129,6 @@ export const hasEmailNotificationsEnabled = async (userId) => {
   } catch (error) {
     console.error(`Error checking email notifications for user ${userId}:`, error);
     return true; // Default to true in case of error
-  }
-};
+
+
+};  }

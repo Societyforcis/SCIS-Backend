@@ -369,7 +369,7 @@ const handleSubmit = async () => {
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
     };
 
-    const response = await axios.post('http://localhost:5000/api/membership', membershipData);
+    const response = await axios.post('${import.meta.env.VITE_API_URL}/api/membership', membershipData);
 
     if (response.data.success) {
       await Swal.fire({
