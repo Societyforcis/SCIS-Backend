@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 // Configure environment variables
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.env') });
 
-// Import the User model
 const User = (await import('./models/User.js')).default;
 
 const createTestUser = async () => {
