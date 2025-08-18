@@ -6,23 +6,19 @@ dotenv.config();
 
 // Configure email transporter
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS // Changed from EMAIL_PASSWORD to EMAIL_PASS
+    pass: process.env.EMAIL_PASS
   }
 });
 
 // Helper function to send confirmation email
 const sendConfirmationEmail = async (email, firstName) => {
-  const name = firstName || 'there'; // Default to 'there' if firstName is not provided
+  const name = firstName || 'there';
   
   try {
-    console.log('Attempting to send email with credentials:', {
-      service: process.env.EMAIL_SERVICE,
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS ? '****' : undefined // Log if password is defined without showing actual value
-    });
+    console.log('Attempting to send email with user:', process.env.EMAIL_USER);
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -48,7 +44,7 @@ const sendConfirmationEmail = async (email, firstName) => {
           </div>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; color: #777; font-size: 12px;">
-            <p>If you did not subscribe to this newsletter, please <a href="${import.meta.env.VITE_API_URL}/api/newsletter/unsubscribe/${email}" style="color: #0066cc;">click here to unsubscribe</a>.</p>
+            <p>If you did not subscribe to this newsletter, please <a href="${process.env.FRONTEND_URL}/unsubscribe?email=${email}" style="color: #0066cc;">click here to unsubscribe</a>.</p>
             <p>&copy; ${new Date().getFullYear()} Society for Cyber Intelligent Systems. All rights reserved.</p>
           </div>
         </div>
@@ -60,7 +56,6 @@ const sendConfirmationEmail = async (email, firstName) => {
     return true;
   } catch (error) {
     console.error('Error sending confirmation email:', error);
-    // Additional error logging for debugging
     if (error.code === 'EAUTH') {
       console.error('Authentication error - check your email credentials');
     }
@@ -71,55 +66,93 @@ const sendConfirmationEmail = async (email, firstName) => {
 // Subscribe to newsletter
 export const subscribe = async (req, res) => {
   try {
+    console.log('Newsletter subscription request received:', req.body);
+    
     const { email, firstName, lastName, interests, frequency } = req.body;
 
+    // Validate required fields
     if (!email) {
+      console.log('Missing email in request');
       return res.status(400).json({
         success: false,
         message: 'Email is required'
       });
     }
 
-    const existingSubscription = await Newsletter.findOne({ email });
-    if (existingSubscription) {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
       return res.status(400).json({
         success: false,
-        message: 'Email already subscribed'
+        message: 'Please provide a valid email address'
       });
     }
 
+    // Check if email already exists
+    const existingSubscription = await Newsletter.findOne({ email });
+    if (existingSubscription) {
+      console.log('Email already subscribed:', email);
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already subscribed to our newsletter'
+      });
+    }
+
+    // Create new newsletter subscription
     const newsletter = new Newsletter({ 
       email,
-      firstName,
-      lastName,
-      interests,
-      frequency: frequency || 'weekly'
+      firstName: firstName || '',
+      lastName: lastName || '',
+      interests: interests || [],
+      frequency: frequency || 'weekly',
+      isActive: true,
+      subscribedAt: new Date()
     });
-    await newsletter.save();
 
-    // Send confirmation email
-    await sendConfirmationEmail(email, firstName);
+    const savedNewsletter = await newsletter.save();
+    console.log('Newsletter subscription saved:', savedNewsletter._id);
+
+    // Send confirmation email (don't wait for it to complete)
+    sendConfirmationEmail(email, firstName).catch(error => {
+      console.error('Failed to send confirmation email, but subscription was successful:', error);
+    });
 
     res.status(201).json({
       success: true,
-      message: 'Successfully subscribed to newsletter'
+      message: 'Successfully subscribed to newsletter! Please check your email for confirmation.',
+      data: {
+        id: savedNewsletter._id,
+        email: savedNewsletter.email
+      }
     });
+
   } catch (error) {
     console.error('Newsletter subscription error:', error);
+    
+    // Handle duplicate key error specifically
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already subscribed to our newsletter'
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Error subscribing to newsletter'
+      message: 'Internal server error. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-// Get all subscriptions
+// Get all subscriptions (Admin only)
 export const getAllSubscriptions = async (req, res) => {
   try {
     const subscriptions = await Newsletter.find().sort({ createdAt: -1 });
     res.json({
       success: true,
-      data: subscriptions
+      data: subscriptions,
+      total: subscriptions.length
     });
   } catch (error) {
     console.error('Error getting newsletter subscriptions:', error);
@@ -130,11 +163,19 @@ export const getAllSubscriptions = async (req, res) => {
   }
 };
 
-// Delete newsletter subscription
+// Delete newsletter subscription (Admin only)
 export const deleteNewsletter = async (req, res) => {
   try {
     const { id } = req.params;
-    await Newsletter.findByIdAndDelete(id);
+    const deleted = await Newsletter.findByIdAndDelete(id);
+    
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Newsletter subscription not found'
+      });
+    }
+    
     res.json({
       success: true,
       message: 'Newsletter subscription deleted successfully'
@@ -148,14 +189,14 @@ export const deleteNewsletter = async (req, res) => {
   }
 };
 
-// Unsubscribe from newsletter
+// Unsubscribe from newsletter (Public)
 export const unsubscribe = async (req, res) => {
   try {
     const { email } = req.params;
     
     const result = await Newsletter.findOneAndUpdate(
       { email },
-      { isActive: false },
+      { isActive: false, unsubscribedAt: new Date() },
       { new: true }
     );
     

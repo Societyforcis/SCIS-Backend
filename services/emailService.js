@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import { hasEmailNotificationsEnabled, getUsersWithEmailNotifications } from '../controller/settingsController.js';
+import Newsletter from '../models/Newsletter.js';
+import UserSettings from '../models/UserSettings.js';
 import User from '../models/User.js';
 
 dotenv.config();
@@ -82,71 +83,34 @@ export const sendAnnouncementEmailToUser = async (userId, notification) => {
  */
 export const sendAnnouncementEmail = async (notification) => {
   try {
-    // Get users who have enabled email notifications
-    const userEmails = await getUsersWithEmailNotifications();
-    console.log(`Sending announcement email to ${userEmails.length} users`);
-    
-    // Filter out invalid emails
-    const validEmails = userEmails.filter(email => email && typeof email === 'string');
-    
-    if (validEmails.length === 0) {
-      console.log('No users with email notifications enabled');
-      return [];
-    }
-    
-    // Send emails in batches to avoid rate limiting
-    const batchSize = 20;
-    const results = [];
-    
-    for (let i = 0; i < validEmails.length; i += batchSize) {
-      const batch = validEmails.slice(i, i + batchSize);
-      
-      // Get user names for personalization
-      const users = await User.find({ email: { $in: batch } })
-        .select('email firstName lastName')
-        .lean();
-      
-      // Send emails
-      const batchPromises = users.map(user => {
-        // Generate the HTML content with the provided image
-        const htmlContent = generateAnnouncementEmailTemplate({
-          title: notification.title,
-          message: notification.message,
-          firstName: user.firstName || '',
-          lastName: user.lastName || '',
-          imageBase64: notification.image,
-          imageType: notification.imageType,
-          link: notification.link || process.env.FRONTEND_URL || 'https://cybersociety.org',
-          notificationType: notification.type
-        });
-        
+    // Get users who have email notifications enabled
+    const usersWithEmailEnabled = await UserSettings.find({ 
+      emailNotifications: true 
+    }).populate('userId', 'email firstName lastName');
+
+    const emailPromises = usersWithEmailEnabled.map(async (userSettings) => {
+      if (userSettings.userId && userSettings.userId.email) {
         const mailOptions = {
-          from: `"Society for CIS" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: `${notification.type === 'event' ? 'Event:' : 'Announcement:'} ${notification.title}`,
-          html: htmlContent
+          from: process.env.EMAIL_USER,
+          to: userSettings.userId.email,
+          subject: notification.title,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>${notification.title}</h2>
+              <p>${notification.message}</p>
+              ${notification.link ? `<p><a href="${notification.link}">Read More</a></p>` : ''}
+              <hr>
+              <p><small>This email was sent by Society for Cyber Intelligent Systems</small></p>
+            </div>
+          `
         };
-        
+
         return transporter.sendMail(mailOptions);
-      });
-      
-      // Wait for all emails in the batch to be sent
-      const batchResults = await Promise.allSettled(batchPromises);
-      results.push(...batchResults);
-      
-      // Add a small delay to avoid rate limiting
-      if (i + batchSize < validEmails.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }
-    
-    // Log results
-    const successful = results.filter(result => result.status === 'fulfilled').length;
-    const failed = results.filter(result => result.status === 'rejected').length;
-    console.log(`Sent ${successful} emails successfully, ${failed} failed`);
-    
-    return results;
-    
+    });
+
+    await Promise.all(emailPromises.filter(Boolean));
+    console.log('Announcement emails sent successfully');
   } catch (error) {
     console.error('Error sending announcement emails:', error);
     throw error;

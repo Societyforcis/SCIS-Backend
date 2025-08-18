@@ -5,6 +5,115 @@ import Notification from '../models/Notification.js';
 import Newsletter from '../models/Newsletter.js';
 import { sendAnnouncementEmail } from '../services/emailService.js';
 
+// User Controllers
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}).select('-password').lean();
+    
+    res.status(200).json({
+      success: true,
+      users: users,
+      total: users.length
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server Error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+export const getUserById = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user'
+    });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { password, ...updateData } = req.body;
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    ).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user,
+      message: 'User updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating user'
+    });
+  }
+};
+
+export const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Prevent deletion of primary admin
+    if (user.email === 'societyforcis.org@gmail.com') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete the primary admin account.' 
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'User deleted successfully' 
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server Error' 
+    });
+  }
+};
+
 // Membership Controllers
 export const getAllMemberships = async (req, res) => {
   try {
@@ -14,7 +123,8 @@ export const getAllMemberships = async (req, res) => {
 
     res.json({
       success: true,
-      memberships
+      memberships,
+      total: memberships.length
     });
   } catch (error) {
     console.error('Error fetching memberships:', error);
@@ -63,7 +173,8 @@ export const updateMembership = async (req, res) => {
 
     res.json({
       success: true,
-      membership
+      membership,
+      message: 'Membership updated successfully'
     });
   } catch (error) {
     res.status(500).json({
@@ -100,15 +211,17 @@ export const deleteMembership = async (req, res) => {
 export const getAllProfiles = async (req, res) => {
   try {
     const profiles = await Profile.find()
-      .populate('userId', 'email isAdmin')
+      .populate('userId', 'email firstName lastName')
       .sort('-createdAt')
       .select('-__v');
 
     res.json({
       success: true,
-      profiles
+      profiles,
+      total: profiles.length
     });
   } catch (error) {
+    console.error('Error fetching profiles:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching profiles'
@@ -119,7 +232,7 @@ export const getAllProfiles = async (req, res) => {
 export const getProfileById = async (req, res) => {
   try {
     const profile = await Profile.findById(req.params.id)
-      .populate('userId', 'email isAdmin');
+      .populate('userId', 'email firstName lastName');
     
     if (!profile) {
       return res.status(404).json({
@@ -146,7 +259,7 @@ export const updateProfile = async (req, res) => {
       req.params.id,
       { $set: req.body },
       { new: true }
-    );
+    ).populate('userId', 'email firstName lastName');
     
     if (!profile) {
       return res.status(404).json({
@@ -157,7 +270,8 @@ export const updateProfile = async (req, res) => {
 
     res.json({
       success: true,
-      profile
+      profile,
+      message: 'Profile updated successfully'
     });
   } catch (error) {
     res.status(500).json({
@@ -169,7 +283,7 @@ export const updateProfile = async (req, res) => {
 
 export const deleteProfile = async (req, res) => {
   try {
-    const profile = await Profile.findByIdAndDelete(req.params.id);
+    const profile = await Profile.findById(req.params.id);
     
     if (!profile) {
       return res.status(404).json({
@@ -178,12 +292,11 @@ export const deleteProfile = async (req, res) => {
       });
     }
 
-    // Also delete associated user if needed
-    await User.findByIdAndDelete(profile.userId);
+    await Profile.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,
-      message: 'Profile and associated user deleted successfully'
+      message: 'Profile deleted successfully'
     });
   } catch (error) {
     res.status(500).json({
@@ -193,225 +306,17 @@ export const deleteProfile = async (req, res) => {
   }
 };
 
-
-// import User from '../models/User.js';
-
-// @desc    Get all users for admin
-// @route   GET /api/admin/users
-// @access  Private/Admin
-const getAllUsers = async (req, res) => {
-    try {
-        // We use .lean() for performance because we only need to read the data.
-        // We are selecting all fields from the User model except the password.
-        const users = await User.find({}).select('-password').lean();
-
-        // The key issue is that `firstName` and `lastName` are on the User model itself
-        // according to your schema, not a separate Profile model as initially suspected.
-        // The User model already contains `firstName` and `lastName`.
-        // Therefore, we just need to send the user data as is.
-        // The frontend `User` interface already matches this schema.
-
-        if (users) {
-            res.status(200).json({
-                success: true,
-                users: users,
-            });
-        } else {
-            res.status(404).json({ success: false, message: 'No users found' });
-        }
-    } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
-};
-
-// @desc    Delete a user
-// @route   DELETE /api/admin/user/:id
-// @access  Private/Admin
-const deleteUser = async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id);
-
-        if (user) {
-            // Add any additional checks here, e.g., preventing deletion of the main admin
-            if (user.email === 'societyforcis.org@gmail.com') {
-                res.status(400).json({ success: false, message: 'Cannot delete the primary admin account.' });
-                return;
-            }
-
-            await user.deleteOne(); // Mongoose v6+ uses deleteOne()
-            res.status(200).json({ success: true, message: 'User removed' });
-        } else {
-            res.status(404).json({ success: false, message: 'User not found' });
-        }
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
-};
-
-
-// You would add other admin functions here like updateUser, etc.
-
-export const sendAnnouncement = async (req, res) => {
-  try {
-    const { 
-      title, 
-      message, 
-      type = 'announcement',
-      link = '',
-      image = null,
-      imageType = null
-    } = req.body;
-
-    if (!title || !message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Title and message are required'
-      });
-    }
-    
-    // Process the image if provided
-    let processedImage = null;
-    let processedImageType = null;
-    
-    if (image) {
-      // Check if it's already in the expected format
-      if (image.includes(';base64,')) {
-        // Extract data from data URL
-        const matches = image.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-        if (matches && matches.length === 3) {
-          processedImage = matches[2];
-          processedImageType = matches[1];
-          console.log(`Image included: ${processedImageType} (${Math.round(processedImage.length / 1024)}KB)`);
-        }
-      } else {
-        processedImage = image;
-        processedImageType = imageType || 'image/jpeg';
-      }
-    }
-
-    // Create a notification for the announcement
-    const notification = new Notification({
-      title,
-      message,
-      type,
-      link,
-      isForAllUsers: true,
-      createdBy: req.user?._id,
-      image: processedImage,
-      imageType: processedImageType,
-      readBy: [],
-      viewedBy: []
-    });
-    
-    await notification.save();
-    
-    // Schedule email sending in the background
-    setImmediate(async () => {
-      try {
-        console.log('Sending announcement emails to users with enabled notifications...');
-        await sendAnnouncementEmail(notification);
-      } catch (emailError) {
-        console.error('Error sending announcement emails:', emailError);
-      }
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Announcement created and emails scheduled for delivery',
-      data: {
-        id: notification._id,
-        title,
-        message,
-        type,
-        imageIncluded: !!processedImage
-      }
-    });
-  } catch (error) {
-    console.error('Error creating announcement:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating announcement',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-};
-
-// Stats Controllers
-export const getUsersStats = async (req, res) => {
-  try {
-    const count = await User.countDocuments();
-    res.json({
-      success: true,
-      count
-    });
-  } catch (error) {
-    console.error('Error fetching users stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching users stats'
-    });
-  }
-};
-
-export const getMembershipsStats = async (req, res) => {
-  try {
-    const count = await Membership.countDocuments({ active: true });
-    res.json({
-      success: true,
-      count
-    });
-  } catch (error) {
-    console.error('Error fetching memberships stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching memberships stats'
-    });
-  }
-};
-
-export const getNotificationsStats = async (req, res) => {
-  try {
-    const count = await Notification.countDocuments();
-    res.json({
-      success: true,
-      count
-    });
-  } catch (error) {
-    console.error('Error fetching notifications stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching notifications stats'
-    });
-  }
-};
-
-export const getNewsletterStats = async (req, res) => {
-  try {
-    const count = await Newsletter.countDocuments({ isActive: true });
-    res.json({
-      success: true,
-      count
-    });
-  } catch (error) {
-    console.error('Error fetching newsletter stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching newsletter stats'
-    });
-  }
-};
-
 // Newsletter Subscribers Controllers
 export const getAllNewsletterSubscribers = async (req, res) => {
   try {
     const subscribers = await Newsletter.find()
-      .sort('-createdAt');
+      .sort('-createdAt')
+      .select('-__v');
 
     res.json({
       success: true,
-      subscribers
+      subscribers,
+      total: subscribers.length
     });
   } catch (error) {
     console.error('Error fetching newsletter subscribers:', error);
@@ -461,7 +366,8 @@ export const updateNewsletterSubscriber = async (req, res) => {
 
     res.json({
       success: true,
-      subscriber
+      subscriber,
+      message: 'Newsletter subscriber updated successfully'
     });
   } catch (error) {
     console.error('Error updating newsletter subscriber:', error);
@@ -496,8 +402,275 @@ export const deleteNewsletterSubscriber = async (req, res) => {
   }
 };
 
-export {
-    getAllUsers,
-    deleteUser,
-    // sendAnnouncement,
+// Notification Controllers
+export const getAllNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.find()
+      .populate('createdBy', 'firstName lastName email')
+      .sort('-createdAt')
+      .select('-__v');
+
+    res.json({
+      success: true,
+      notifications,
+      total: notifications.length
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching notifications'
+    });
+  }
+};
+
+export const getNotificationById = async (req, res) => {
+  try {
+    const notification = await Notification.findById(req.params.id)
+      .populate('createdBy', 'firstName lastName email');
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      notification
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching notification'
+    });
+  }
+};
+
+export const updateNotification = async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true }
+    ).populate('createdBy', 'firstName lastName email');
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      notification,
+      message: 'Notification updated successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating notification'
+    });
+  }
+};
+
+export const deleteNotification = async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndDelete(req.params.id);
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting notification'
+    });
+  }
+};
+
+// Announcement Controller
+export const sendAnnouncement = async (req, res) => {
+  try {
+    const { 
+      title, 
+      message, 
+      type = 'announcement',
+      link = '',
+      image = null,
+      imageType = null
+    } = req.body;
+
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title and message are required'
+      });
+    }
+    
+    // Process the image if provided
+    let processedImage = null;
+    let processedImageType = null;
+    
+    if (image) {
+      if (image.includes(';base64,')) {
+        const matches = image.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          processedImage = matches[2];
+          processedImageType = matches[1];
+        }
+      } else {
+        processedImage = image;
+        processedImageType = imageType || 'image/jpeg';
+      }
+    }
+
+    const notification = new Notification({
+      title,
+      message,
+      type,
+      link,
+      isForAllUsers: true,
+      createdBy: req.user?._id,
+      image: processedImage,
+      imageType: processedImageType,
+      readBy: [],
+      viewedBy: []
+    });
+    
+    await notification.save();
+
+    // Schedule email sending in the background
+    setImmediate(async () => {
+      try {
+        console.log('Sending announcement emails to users with enabled notifications...');
+        await sendAnnouncementEmail(notification);
+      } catch (emailError) {
+        console.error('Error sending announcement emails:', emailError);
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Announcement created and emails scheduled for delivery',
+      data: {
+        id: notification._id,
+        title,
+        message,
+        type
+      }
+    });
+  } catch (error) {
+    console.error('Error creating announcement:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating announcement',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Stats Controllers
+export const getUsersStats = async (req, res) => {
+  try {
+    const total = await User.countDocuments();
+    const active = await User.countDocuments({ isEmailVerified: true });
+    const admins = await User.countDocuments({ isAdmin: true });
+    
+    res.json({
+      success: true,
+      stats: {
+        total,
+        active,
+        admins,
+        inactive: total - active
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching users stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching users stats'
+    });
+  }
+};
+
+export const getMembershipsStats = async (req, res) => {
+  try {
+    const total = await Membership.countDocuments();
+    const active = await Membership.countDocuments({ active: true });
+    const pending = await Membership.countDocuments({ paymentStatus: 'pending' });
+    
+    res.json({
+      success: true,
+      stats: {
+        total,
+        active,
+        pending,
+        inactive: total - active
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching memberships stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching memberships stats'
+    });
+  }
+};
+
+export const getNotificationsStats = async (req, res) => {
+  try {
+    const total = await Notification.countDocuments();
+    const recent = await Notification.countDocuments({
+      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+    });
+    
+    res.json({
+      success: true,
+      stats: {
+        total,
+        recent,
+        lastWeek: recent
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching notifications stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching notifications stats'
+    });
+  }
+};
+
+export const getNewsletterStats = async (req, res) => {
+  try {
+    const total = await Newsletter.countDocuments();
+    const active = await Newsletter.countDocuments({ isActive: true });
+    
+    res.json({
+      success: true,
+      stats: {
+        total,
+        active,
+        inactive: total - active
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching newsletter stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching newsletter stats'
+    });
+  }
 };

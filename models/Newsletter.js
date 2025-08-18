@@ -1,25 +1,33 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
 const newsletterSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
     unique: true,
+    lowercase: true,
     trim: true,
-    lowercase: true
+    validate: {
+      validator: function(v) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+      },
+      message: 'Please provide a valid email address'
+    }
   },
   firstName: {
     type: String,
-    trim: true
+    trim: true,
+    default: ''
   },
   lastName: {
     type: String,
+    trim: true,
+    default: ''
+  },
+  interests: [{
+    type: String,
     trim: true
-  },
-  interests: {
-    type: [String],
-    default: []
-  },
+  }],
   frequency: {
     type: String,
     enum: ['daily', 'weekly', 'monthly'],
@@ -28,9 +36,20 @@ const newsletterSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  subscribedAt: {
+    type: Date,
+    default: Date.now
+  },
+  unsubscribedAt: {
+    type: Date
   }
 }, {
   timestamps: true
 });
 
-export default mongoose.models.Newsletter || mongoose.model("Newsletter", newsletterSchema);
+// Create indexes for better performance
+newsletterSchema.index({ email: 1 });
+newsletterSchema.index({ isActive: 1 });
+
+export default mongoose.model('Newsletter', newsletterSchema);
