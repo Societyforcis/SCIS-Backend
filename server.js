@@ -14,7 +14,6 @@ import bodyParser from 'body-parser';
 
 dotenv.config();
 
-// Connect to MongoDB
 connectDB();
 
 const app = express();
@@ -27,7 +26,7 @@ app.use(express.json({ limit: '10mb' }));
 
 
 const corsOptions = {
-  origin: ['http://localhost:5173', 'https://scis-frontend.vercel.app','https://societycis.org'],
+  origin: ['https://societycis.org', 'https://scis-frontend.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
