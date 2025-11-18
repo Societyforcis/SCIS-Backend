@@ -38,3 +38,23 @@ export const sendOTPEmail = async (email, otp) => {
     };
     return transporter.sendMail(mailOptions);
 }; 
+export const sendMembershipApprovalEmail = async (email, name, membershipId, membershipType, issueDate, expiryDate) => {
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: "🎉 Your SCIS Membership Has Been Approved!",
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>Dear ${name},</h2>
+                <p>Congratulations! Your membership has been APPROVED!</p>
+                <h3>Membership Details:</h3>
+                <p><strong>ID:</strong> ${membershipId}</p>
+                <p><strong>Type:</strong> ${membershipType}</p>
+                <p><strong>Valid From:</strong> ${new Date(issueDate).toLocaleDateString()}</p>
+                <p><strong>Valid Until:</strong> ${new Date(expiryDate).toLocaleDateString()}</p>
+                <p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/profile">View Membership Card</a></p>
+            </div>
+        `
+    };
+    return transporter.sendMail(mailOptions);
+};

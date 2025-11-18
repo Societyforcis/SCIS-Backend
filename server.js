@@ -8,6 +8,8 @@ import adminRoutes from "./routes/adminRoutes.js";
 import membershipRoutes from "./routes/membershipRoutes.js";
 import newsletterRoutes from "./routes/newsletterRoutes.js";
 import notificationRoutes from './routes/notificationRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 import connectDB from "./config/db.js";
 import bodyParser from 'body-parser';
@@ -24,9 +26,9 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 app.use(express.json({ limit: '10mb' }));
 
-
+// https://societycis.org
 const corsOptions = {
-  origin: ['https://societycis.org', 'https://scis-frontend.vercel.app'],
+  origin: ['http://localhost:5173', 'https://scis-frontend.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -47,6 +49,8 @@ app.use('/api/membership', membershipRoutes);
 
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/api/booking', bookingRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to Cyber Intelligent System");

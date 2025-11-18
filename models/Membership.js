@@ -22,23 +22,48 @@ const membershipSchema = new mongoose.Schema({
   membershipType: { 
     type: String, 
     required: true,
-    enum: ['student', 'professional', 'corporate']
+    enum: ['student-ug', 'student-pg', 'academic', 'industry', 'international']
   },
   interests: [String],
   experience: String,
   paymentStatus: {
     type: String,
-    enum: ['pending', 'completed', 'failed'],
+    enum: ['pending', 'verified', 'completed', 'rejected'],
     default: 'pending'
   },
-  membershipFee: String,
+  membershipFee: {
+    type: Number,
+    required: true
+  },
+  paymentVerificationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PaymentVerification',
+    default: null
+  },
   profilePhoto: { type: String },
   membershipId: { type: String },
   issueDate: { type: Date },
   expiryDate: { type: Date },
   active: {
     type: Boolean,
-    default: true
+    default: false // Default to false until admin approves
+  },
+  isAdminApproved: {
+    type: Boolean,
+    default: false
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  approvedAt: {
+    type: Date,
+    default: null
+  },
+  adminRemarks: {
+    type: String,
+    default: ''
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,

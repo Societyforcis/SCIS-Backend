@@ -1,5 +1,44 @@
 import Membership from '../models/Membership.js';
 import { uploadToCloudinary } from '../utils/cloudinary.js';
+import mongoose from 'mongoose';
+
+// Membership fee structure
+const MEMBERSHIP_FEES = {
+  'student-ug': 250,      // Undergraduate students - ₹250
+  'student-pg': 350,      // Postgraduate students - ₹350
+  'academic': 500,        // Academic/Faculty - ₹500
+  'industry': 750,        // Industry professionals - ₹750
+  'international': 600    // International members (non-Indian) - ₹600
+};
+
+// Helper function to normalize membership type
+const normalizeMembershipType = (type) => {
+  const typeMap = {
+    'student': 'student-ug', // Default student to UG
+    'professional': 'academic',
+    'corporate': 'industry'
+  };
+  
+  return typeMap[type] || type;
+};
+
+// Helper function to parse membership fee
+const parseMembershipFee = (fee, membershipType) => {
+  // If fee is not provided, get from fee structure
+  if (!fee) {
+    return MEMBERSHIP_FEES[membershipType] || 0;
+  }
+  
+  // If fee is a string, remove currency symbols and convert to number
+  if (typeof fee === 'string') {
+    const cleanFee = fee.replace(/[₹$,\s]/g, '');
+    const numericFee = parseInt(cleanFee, 10);
+    return isNaN(numericFee) ? MEMBERSHIP_FEES[membershipType] || 0 : numericFee;
+  }
+  
+  // If already a number, return as is
+  return parseInt(fee, 10);
+};
 
 // Register new membership
 export const registerMembership = async (req, res) => {
@@ -34,6 +73,21 @@ export const registerMembership = async (req, res) => {
         });
       }
     }
+    
+    // Normalize membership type (convert old values to new enum values)
+    const normalizedMembershipType = normalizeMembershipType(req.body.membershipType);
+    
+    // Validate membership type
+    const validTypes = ['student-ug', 'student-pg', 'academic', 'industry', 'international'];
+    if (!validTypes.includes(normalizedMembershipType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid membership type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+    
+    // Parse and validate membership fee
+    const membershipFee = parseMembershipFee(req.body.membershipFee, normalizedMembershipType);
 
     // Generate a unique membership ID
     const membershipIdPrefix = 'SOCCOS';
@@ -47,6 +101,8 @@ export const registerMembership = async (req, res) => {
     // Create membership data object with properly formatted user ID
     const membershipData = {
       ...req.body,
+      membershipType: normalizedMembershipType, // Use normalized type
+      membershipFee: membershipFee, // Use parsed numeric fee
       membershipId: generatedMembershipId,
       issueDate: new Date(),
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
@@ -164,9 +220,12 @@ export const getCurrentMembership = async (req, res) => {
       });
     }
     
+    // Return membership with approval status
     res.status(200).json({
       success: true,
-      membership
+      membership,
+      isAdminApproved: membership.isAdminApproved || false,
+      canViewCard: membership.isAdminApproved && membership.active
     });
   } catch (error) {
     console.error('Error in getCurrentMembership:', error);
@@ -259,7 +318,7 @@ export const upgradeMembership = async (req, res) => {
   }
 };
 
-// Get membership by ID - Public route
+// Get membership by ID - Public route (but restricted based on approval)
 export const getMembershipById = async (req, res) => {
   try {
     const membershipId = req.params.id;
@@ -287,10 +346,21 @@ export const getMembershipById = async (req, res) => {
       });
     }
     
-    // Return the membership data
+    // Check if membership is approved by admin
+    if (!membership.isAdminApproved) {
+      return res.status(403).json({
+        success: false,
+        message: 'Membership is pending admin approval. You cannot view membership details until approved.',
+        status: 'pending_approval',
+        paymentStatus: membership.paymentStatus
+      });
+    }
+    
+    // Return the membership data only if approved
     res.status(200).json({
       success: true,
-      membership
+      membership,
+      isApproved: true
     });
   } catch (error) {
     console.error('Error in getMembershipById:', error);
@@ -324,13 +394,63 @@ export const validateMembership = async (req, res) => {
     // Return validation result
     res.json({
       valid: !!membership,
-      active: membership ? membership.active : false
+      active: membership ? membership.active : false,
+      isAdminApproved: membership ? membership.isAdminApproved : false
     });
   } catch (error) {
     console.error('Error validating membership:', error);
     res.status(500).json({
       valid: false,
       message: 'Error validating membership'
+    });
+  }
+};
+
+// Check membership approval status
+export const checkApprovalStatus = async (req, res) => {
+  try {
+    const { membershipId, email } = req.query;
+    
+    let membership;
+    
+    if (membershipId) {
+      membership = await Membership.findOne({ membershipId });
+      if (!membership && mongoose.Types.ObjectId.isValid(membershipId)) {
+        membership = await Membership.findById(membershipId);
+      }
+    } else if (email) {
+      membership = await Membership.findOne({ email }).sort({ createdAt: -1 });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide either membershipId or email'
+      });
+    }
+    
+    if (!membership) {
+      return res.status(404).json({
+        success: false,
+        message: 'Membership not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      status: {
+        isAdminApproved: membership.isAdminApproved || false,
+        paymentStatus: membership.paymentStatus,
+        active: membership.active,
+        canViewCard: (membership.isAdminApproved && membership.active) || false,
+        approvedAt: membership.approvedAt,
+        adminRemarks: membership.adminRemarks || '',
+        membershipId: membership.isAdminApproved ? membership.membershipId : null // Only show ID if approved
+      }
+    });
+  } catch (error) {
+    console.error('Error checking approval status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking approval status'
     });
   }
 };

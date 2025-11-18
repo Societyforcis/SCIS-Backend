@@ -13,6 +13,7 @@ import {
   getAllNotifications, getNotificationById, updateNotification, deleteNotification,
   // Stats controllers
   getUsersStats, getMembershipsStats, getNotificationsStats, getNewsletterStats,
+  getPaymentVerificationStats,
   // Announcement controller
   sendAnnouncement
 } from '../controller/adminController.js';
@@ -63,5 +64,6 @@ router.get('/stats/users', getUsersStats);
 router.get('/stats/memberships', getMembershipsStats);
 router.get('/stats/notifications', getNotificationsStats);
 router.get('/stats/newsletter', getNewsletterStats);
+router.get('/stats/payment-verifications', getPaymentVerificationStats);
 
 export default router;

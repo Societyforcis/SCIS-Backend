@@ -3,6 +3,7 @@ import Profile from '../models/Profile.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import Newsletter from '../models/Newsletter.js';
+import PaymentVerification from '../models/PaymentVerification.js';
 import { sendAnnouncementEmail } from '../services/emailService.js';
 
 // User Controllers
@@ -671,6 +672,31 @@ export const getNewsletterStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching newsletter stats'
+    });
+  }
+};
+
+export const getPaymentVerificationStats = async (req, res) => {
+  try {
+    const total = await PaymentVerification.countDocuments();
+    const pending = await PaymentVerification.countDocuments({ verificationStatus: 'pending' });
+    const approved = await PaymentVerification.countDocuments({ verificationStatus: 'approved' });
+    const rejected = await PaymentVerification.countDocuments({ verificationStatus: 'rejected' });
+    
+    res.json({
+      success: true,
+      stats: {
+        total,
+        pending,
+        approved,
+        rejected
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching payment verification stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching payment verification stats'
     });
   }
 };
