@@ -97,38 +97,59 @@ export const submitBookingMembership = async (req, res) => {
     // Parse membership fee
     const membershipFee = parseMembershipFee(req.body.membershipFee, normalizedMembershipType);
     
-    // Handle payment screenshot upload if provided
-    let paymentScreenshotUrl = null;
+    // Handle payment screenshot - store as base64 in paymentProof field
+    let paymentProofData = null;
+    
+    console.log('🔍 Checking payment screenshot in request body...');
+    console.log('- paymentScreenshot field exists:', 'paymentScreenshot' in req.body);
+    console.log('- paymentScreenshot value:', req.body.paymentScreenshot ? 'HAS VALUE' : 'NULL/UNDEFINED');
+    console.log('- paymentScreenshot type:', typeof req.body.paymentScreenshot);
+    
     if (req.body.paymentScreenshot) {
-      try {
-        const uploadResult = await cloudinary.uploader.upload(req.body.paymentScreenshot, {
-          folder: 'scis/payment-screenshots',
-          transformation: [
-            { width: 1000, crop: 'limit' },
-            { quality: 'auto:good' }
-          ]
-        });
-        paymentScreenshotUrl = uploadResult.secure_url;
-      } catch (uploadError) {
-        console.error('Error uploading payment screenshot:', uploadError);
+      console.log('📸 Payment screenshot received!');
+      console.log('- Length:', req.body.paymentScreenshot.length);
+      console.log('- Starts with data::', req.body.paymentScreenshot.startsWith('data:'));
+      console.log('- First 50 chars:', req.body.paymentScreenshot.substring(0, 50));
+      
+      // If it already has data URI prefix, use as is
+      if (req.body.paymentScreenshot.startsWith('data:')) {
+        paymentProofData = req.body.paymentScreenshot;
+        console.log('✅ Using screenshot as-is (already has data URI prefix)');
+      } else {
+        // Add data URI prefix if missing
+        paymentProofData = `data:image/png;base64,${req.body.paymentScreenshot}`;
+        console.log('✅ Added data URI prefix to screenshot');
       }
+      
+      console.log('✅ Payment proof ready for storage in NEW field, final length:', paymentProofData.length);
+    } else {
+      console.log('⚠️ NO PAYMENT SCREENSHOT in request body!');
     }
     
-    // Create booking data
+    // Create booking data - store payment proof in NEW field
     const bookingData = {
       ...req.body,
       membershipType: normalizedMembershipType,
       membershipFee: membershipFee,
-      paymentScreenshot: paymentScreenshotUrl,
+      paymentProof: paymentProofData, // NEW FIELD for base64 storage
+      paymentScreenshot: null, // Keep old field as null for compatibility
       paymentDate: req.body.paymentStatus === 'paid' ? new Date() : null,
       userId: req.user?._id || null
     };
+    
+    console.log('📦 Final bookingData before saving:');
+    console.log('- paymentProof exists:', !!bookingData.paymentProof);
+    console.log('- paymentProof length:', bookingData.paymentProof?.length);
+    console.log('- paymentProof starts with data::', bookingData.paymentProof?.startsWith('data:'));
     
     // Create and save booking
     const booking = new BookingMembership(bookingData);
     const savedBooking = await booking.save();
     
-    console.log('Booking created successfully:', savedBooking._id);
+    console.log('✅ Booking created successfully:', savedBooking._id);
+    console.log('💾 Saved paymentProof exists:', !!savedBooking.paymentProof);
+    console.log('💾 Saved paymentProof length:', savedBooking.paymentProof?.length);
+    console.log('💾 Saved to MongoDB with NEW paymentProof field!');
     
     res.status(201).json({
       success: true,

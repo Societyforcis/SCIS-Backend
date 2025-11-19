@@ -25,10 +25,9 @@ const httpServer = createServer(app);
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 app.use(express.json({ limit: '10mb' }));
-// http://localhost:5173
 const corsOptions = {
 // https://societycis.org
-  origin: ['https://societycis.org', 'https://scis-frontend.vercel.app'],
+  origin: ['https://societycis.org', 'https://scis-frontend.vercel.app',],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

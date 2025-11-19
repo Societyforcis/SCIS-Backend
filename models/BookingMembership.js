@@ -59,7 +59,11 @@ const bookingMembershipSchema = new mongoose.Schema({
     trim: true
   },
   paymentScreenshot: {
-    type: String, // Cloudinary URL
+    type: String, // Cloudinary URL (deprecated)
+  },
+  paymentProof: {
+    type: String, // Base64 encoded payment screenshot
+    default: null
   },
   paymentDate: {
     type: Date
